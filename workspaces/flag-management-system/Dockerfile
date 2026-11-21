@@ -1,4 +1,5 @@
 # Multi-stage build for DigitalOcean App Platform / container runs.
+# build-rev: 3 — bump to force App Platform rebuild when git clone is cached
 FROM maven:3.9.11-eclipse-temurin-21-alpine AS build
 WORKDIR /workspace
 COPY pom.xml .
