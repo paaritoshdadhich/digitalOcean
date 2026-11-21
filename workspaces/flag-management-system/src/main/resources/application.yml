@@ -47,7 +47,8 @@ spring:
         enabled: false
 
   cache:
-    type: redis
+    # Use SPRING_CACHE_TYPE=none on App Platform when Redis is not provisioned.
+    type: ${SPRING_CACHE_TYPE:redis}
     redis:
       # Spring CacheManager default; evaluation cache-aside uses a dedicated 60s TTL.
       time-to-live: 60s
