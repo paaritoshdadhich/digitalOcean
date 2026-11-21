@@ -39,7 +39,8 @@ spring:
   cache:
     type: redis
     redis:
-      time-to-live: 10m
+      # Spring CacheManager default; evaluation cache-aside uses a dedicated 60s TTL.
+      time-to-live: 60s
       cache-null-values: false
 
 server:
