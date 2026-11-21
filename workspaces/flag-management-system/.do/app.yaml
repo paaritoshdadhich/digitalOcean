@@ -19,7 +19,8 @@ services:
       branch: main
       deploy_on_push: true
     source_dir: workspaces/flag-management-system
-    dockerfile_path: Dockerfile
+    # Path is relative to the git repository root (not source_dir).
+    dockerfile_path: workspaces/flag-management-system/Dockerfile
     http_port: 8080
     instance_count: 1
     instance_size_slug: apps-s-1vcpu-1gb
