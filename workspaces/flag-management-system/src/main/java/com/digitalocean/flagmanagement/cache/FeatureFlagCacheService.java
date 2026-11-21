@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +18,8 @@ import org.springframework.stereotype.Service;
  * version and naturally miss old {@code eval:*} entries—no Redis {@code KEYS}/SCAN invalidation.
  * In-flight readers that loaded a pre-commit snapshot may still populate a stale
  * {@code flag:{name}} or an {@code eval:*} key for the old version until the 60s TTL expires.
- * Redis outages are treated as cache misses; evaluation continues from PostgreSQL.
+ * Redis outages (or a deploy without Redis) are treated as cache misses; evaluation continues
+ * from PostgreSQL.
  */
 @Service
 public class FeatureFlagCacheService {
@@ -27,8 +29,11 @@ public class FeatureFlagCacheService {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    public FeatureFlagCacheService(RedisTemplate<String, Object> redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    public FeatureFlagCacheService(ObjectProvider<RedisTemplate<String, Object>> redisTemplateProvider) {
+        this.redisTemplate = redisTemplateProvider.getIfAvailable();
+        if (this.redisTemplate == null) {
+            log.warn("RedisTemplate not available; feature flag evaluation will use PostgreSQL only");
+        }
     }
 
     public Optional<CachedFlagConfig> getFlagConfig(String flagName) {
@@ -40,6 +45,9 @@ public class FeatureFlagCacheService {
     }
 
     public void evictFlagConfig(String flagName) {
+        if (redisTemplate == null) {
+            return;
+        }
         try {
             redisTemplate.delete(FeatureFlagCacheKeys.flagConfig(flagName));
         } catch (RuntimeException ex) {
@@ -56,6 +64,9 @@ public class FeatureFlagCacheService {
     }
 
     private <T> Optional<T> get(String key, Class<T> type) {
+        if (redisTemplate == null) {
+            return Optional.empty();
+        }
         try {
             Object value = redisTemplate.opsForValue().get(key);
             if (value == null) {
@@ -73,6 +84,9 @@ public class FeatureFlagCacheService {
     }
 
     private void put(String key, Object value) {
+        if (redisTemplate == null) {
+            return;
+        }
         try {
             redisTemplate.opsForValue().set(key, value, TTL);
         } catch (RuntimeException ex) {

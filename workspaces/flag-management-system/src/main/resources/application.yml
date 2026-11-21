@@ -65,7 +65,8 @@ management:
       show-details: when_authorized
   health:
     redis:
-      enabled: true
+      # Disabled automatically when Redis autoconfig is excluded (e.g. App Platform without cache DB).
+      enabled: ${MANAGEMENT_HEALTH_REDIS_ENABLED:true}
     db:
       enabled: true
 

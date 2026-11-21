@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -35,11 +37,15 @@ class FeatureFlagCacheServiceTest {
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
+    @Mock
+    private ObjectProvider<RedisTemplate<String, Object>> redisTemplateProvider;
+
     private FeatureFlagCacheService cacheService;
 
     @BeforeEach
     void setUp() {
-        cacheService = new FeatureFlagCacheService(redisTemplate);
+        when(redisTemplateProvider.getIfAvailable()).thenReturn(redisTemplate);
+        cacheService = new FeatureFlagCacheService(redisTemplateProvider);
     }
 
     @Test
@@ -118,5 +124,19 @@ class FeatureFlagCacheServiceTest {
         when(valueOperations.get(FeatureFlagCacheKeys.flagConfig(FLAG_NAME))).thenReturn(config);
 
         assertThat(cacheService.getFlagConfig(FLAG_NAME)).contains(config);
+    }
+
+    @Test
+    void withoutRedisTemplate_allOperationsAreNoOps() {
+        when(redisTemplateProvider.getIfAvailable()).thenReturn(null);
+        FeatureFlagCacheService noRedis = new FeatureFlagCacheService(redisTemplateProvider);
+
+        assertThat(noRedis.getFlagConfig(FLAG_NAME)).isEmpty();
+        noRedis.putFlagConfig(new CachedFlagConfig(FLAG_ID, FLAG_NAME, true, 1L));
+        noRedis.evictFlagConfig(FLAG_NAME);
+        assertThat(noRedis.getEvaluation(FLAG_ID, 1L, USER_ID)).isEmpty();
+        noRedis.putEvaluation(FLAG_ID, 1L, USER_ID, new CachedEvaluation(true, "GLOBAL"));
+
+        verifyNoInteractions(redisTemplate);
     }
 }

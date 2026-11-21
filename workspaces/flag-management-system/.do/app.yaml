@@ -50,25 +50,16 @@ services:
       - key: DB_SSLMODE
         scope: RUN_TIME
         value: require
-      - key: REDIS_HOST
+      # Dev App Platform Redis/Valkey is not available without a paid production DB.
+      # Evaluation falls back to PostgreSQL when Redis autoconfig is excluded.
+      - key: SPRING_AUTOCONFIGURE_EXCLUDE
         scope: RUN_TIME
-        value: ${cache.HOSTNAME}
-      - key: REDIS_PORT
+        value: org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration,org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - key: MANAGEMENT_HEALTH_REDIS_ENABLED
         scope: RUN_TIME
-        value: ${cache.PORT}
-      - key: REDIS_PASSWORD
-        scope: RUN_TIME
-        type: SECRET
-        value: ${cache.PASSWORD}
-      - key: REDIS_SSL
-        scope: RUN_TIME
-        value: "true"
+        value: "false"
 databases:
   - name: db
     engine: PG
     version: "16"
-    production: false
-  - name: cache
-    engine: REDIS
-    version: "7"
     production: false
