@@ -9,21 +9,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import com.digitalocean.flagmanagement.controller.FeatureFlagController;
 import com.digitalocean.flagmanagement.entity.AuditLog;
@@ -31,26 +24,13 @@ import com.digitalocean.flagmanagement.entity.FeatureFlag;
 import com.digitalocean.flagmanagement.repository.AuditLogRepository;
 import com.digitalocean.flagmanagement.repository.FeatureFlagOverrideRepository;
 import com.digitalocean.flagmanagement.repository.FeatureFlagRepository;
+import com.digitalocean.flagmanagement.support.AbstractIntegrationTest;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@Testcontainers
-class AuditLogIntegrationTest {
+class AuditLogIntegrationTest extends AbstractIntegrationTest {
 
     private static final String ACTOR = "admin-42";
     private static final String FLAG_NAME = "audit_flag";
     private static final String USER_ID = "user-9";
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
-            DockerImageName.parse("postgres:16-alpine")
-    );
-
-    @Container
-    @ServiceConnection(name = "redis")
-    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
-            .withExposedPorts(6379);
 
     @Autowired
     private MockMvc mockMvc;
@@ -210,6 +190,77 @@ class AuditLogIntegrationTest {
 
         assertThat(featureFlagRepository.findByName("rollback_flag")).isEmpty();
         assertThat(auditLogRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void mutatingWithoutActorHeader_recordsAnonymous() throws Exception {
+        mockMvc.perform(post("/api/v1/flags")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "anon_audit",
+                                  "description": "seed",
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        FeatureFlag flag = featureFlagRepository.findByName("anon_audit").orElseThrow();
+        assertThat(auditLogRepository.findByFlagIdOrderByCreatedAtDesc(flag.getId()).getFirst().getActor())
+                .isEqualTo("anonymous");
+    }
+
+    @Test
+    void failedValidation_doesNotWriteAudit() throws Exception {
+        long before = auditLogRepository.count();
+
+        mockMvc.perform(post("/api/v1/flags")
+                        .header(FeatureFlagController.ACTOR_HEADER, ACTOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "1invalid",
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        assertThat(auditLogRepository.count()).isEqualTo(before);
+    }
+
+    @Test
+    void notFoundUpdate_doesNotWriteAudit() throws Exception {
+        long before = auditLogRepository.count();
+
+        mockMvc.perform(put("/api/v1/flags/does_not_exist")
+                        .header(FeatureFlagController.ACTOR_HEADER, ACTOR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "description": "x",
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isNotFound());
+
+        assertThat(auditLogRepository.count()).isEqualTo(before);
+    }
+
+    @Test
+    void auditEntriesSurviveFlagDeletion() throws Exception {
+        createFlag("survive_delete", true);
+        FeatureFlag flag = featureFlagRepository.findByName("survive_delete").orElseThrow();
+        UUID flagId = flag.getId();
+
+        mockMvc.perform(delete("/api/v1/flags/survive_delete")
+                        .header(FeatureFlagController.ACTOR_HEADER, ACTOR))
+                .andExpect(status().isNoContent());
+
+        List<AuditLog> remaining = auditLogRepository.findByFlagIdOrderByCreatedAtDesc(flagId);
+        assertThat(remaining).hasSize(2); // CREATE + DELETE
+        assertThat(remaining.stream().map(AuditLog::getAction).toList())
+                .containsExactly("DELETE", "CREATE");
+        assertThat(featureFlagRepository.findByName("survive_delete")).isEmpty();
     }
 
     private void createFlag(String name, boolean enabled) throws Exception {
