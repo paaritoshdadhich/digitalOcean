@@ -1,0 +1,11 @@
+target
+.git
+.idea
+*.iml
+.DS_Store
+docs
+scripts
+**/surefire-reports
+**/.mvn
+Dockerfile
+.dockerignore

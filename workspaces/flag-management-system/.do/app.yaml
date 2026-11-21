@@ -1,0 +1,74 @@
+name: flag-management-system
+region: blr
+features:
+  - buildpack-stack=ubuntu-22
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: api
+services:
+  - name: api
+    github:
+      repo: paaritoshdadhich/digitalOcean
+      branch: main
+      deploy_on_push: true
+    source_dir: workspaces/flag-management-system
+    dockerfile_path: Dockerfile
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    health_check:
+      http_path: /actuator/health
+      initial_delay_seconds: 40
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 12
+      success_threshold: 1
+    envs:
+      - key: DB_HOST
+        scope: RUN_TIME
+        value: ${db.HOSTNAME}
+      - key: DB_PORT
+        scope: RUN_TIME
+        value: ${db.PORT}
+      - key: DB_NAME
+        scope: RUN_TIME
+        value: ${db.DATABASE}
+      - key: DB_USER
+        scope: RUN_TIME
+        value: ${db.USERNAME}
+      - key: DB_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+        value: ${db.PASSWORD}
+      - key: DB_SSLMODE
+        scope: RUN_TIME
+        value: require
+      - key: REDIS_HOST
+        scope: RUN_TIME
+        value: ${cache.HOSTNAME}
+      - key: REDIS_PORT
+        scope: RUN_TIME
+        value: ${cache.PORT}
+      - key: REDIS_PASSWORD
+        scope: RUN_TIME
+        type: SECRET
+        value: ${cache.PASSWORD}
+      - key: REDIS_SSL
+        scope: RUN_TIME
+        value: "true"
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: false
+  - name: cache
+    engine: REDIS
+    version: "7"
+    production: false
