@@ -19,6 +19,8 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
+        # App-owned schema avoids PG15+ "permission denied for schema public" on managed DBs.
+        default_schema: ${DB_SCHEMA:public}
         jdbc:
           time_zone: UTC
         format_sql: true
@@ -28,6 +30,9 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    schemas: ${DB_SCHEMA:public}
+    default-schema: ${DB_SCHEMA:public}
+    create-schemas: true
 
   data:
     redis:

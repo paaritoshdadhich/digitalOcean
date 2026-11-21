@@ -51,6 +51,10 @@ services:
       - key: DB_SSLMODE
         scope: RUN_TIME
         value: require
+      # Use an app-owned schema so Flyway can create tables on PG16 managed DBs.
+      - key: DB_SCHEMA
+        scope: RUN_TIME
+        value: feature_flags
       # Dev App Platform Redis/Valkey is not available without a paid production DB.
       # Evaluation falls back to PostgreSQL when Redis autoconfig is excluded.
       - key: SPRING_AUTOCONFIGURE_EXCLUDE
