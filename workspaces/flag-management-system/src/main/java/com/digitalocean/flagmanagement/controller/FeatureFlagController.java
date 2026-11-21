@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,6 +26,8 @@ import com.digitalocean.flagmanagement.service.FeatureFlagService;
 @RequestMapping("/api/v1/flags")
 public class FeatureFlagController {
 
+    public static final String ACTOR_HEADER = "X-Actor-Id";
+
     private final FeatureFlagService featureFlagService;
 
     public FeatureFlagController(FeatureFlagService featureFlagService) {
@@ -33,9 +36,10 @@ public class FeatureFlagController {
 
     @PostMapping
     public ResponseEntity<FeatureFlagResponse> create(
-            @Valid @RequestBody CreateFeatureFlagRequest request
+            @Valid @RequestBody CreateFeatureFlagRequest request,
+            @RequestHeader(value = ACTOR_HEADER, defaultValue = "anonymous") String actorId
     ) {
-        FeatureFlagResponse created = featureFlagService.create(request);
+        FeatureFlagResponse created = featureFlagService.create(request, actorId);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -52,14 +56,18 @@ public class FeatureFlagController {
     @PutMapping("/{name}")
     public FeatureFlagResponse update(
             @PathVariable String name,
-            @Valid @RequestBody UpdateFeatureFlagRequest request
+            @Valid @RequestBody UpdateFeatureFlagRequest request,
+            @RequestHeader(value = ACTOR_HEADER, defaultValue = "anonymous") String actorId
     ) {
-        return featureFlagService.update(name, request);
+        return featureFlagService.update(name, request, actorId);
     }
 
     @DeleteMapping("/{name}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String name) {
-        featureFlagService.delete(name);
+    public void delete(
+            @PathVariable String name,
+            @RequestHeader(value = ACTOR_HEADER, defaultValue = "anonymous") String actorId
+    ) {
+        featureFlagService.delete(name, actorId);
     }
 }

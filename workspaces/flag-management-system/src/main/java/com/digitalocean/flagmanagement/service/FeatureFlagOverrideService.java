@@ -1,5 +1,8 @@
 package com.digitalocean.flagmanagement.service;
 
+import java.util.Map;
+import java.util.Optional;
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 
@@ -20,17 +23,20 @@ public class FeatureFlagOverrideService {
 
     private final FeatureFlagRepository featureFlagRepository;
     private final FeatureFlagOverrideRepository overrideRepository;
+    private final AuditLogService auditLogService;
     private final EntityManager entityManager;
     private final AfterCommitCacheInvalidator cacheInvalidator;
 
     public FeatureFlagOverrideService(
             FeatureFlagRepository featureFlagRepository,
             FeatureFlagOverrideRepository overrideRepository,
+            AuditLogService auditLogService,
             EntityManager entityManager,
             AfterCommitCacheInvalidator cacheInvalidator
     ) {
         this.featureFlagRepository = featureFlagRepository;
         this.overrideRepository = overrideRepository;
+        this.auditLogService = auditLogService;
         this.entityManager = entityManager;
         this.cacheInvalidator = cacheInvalidator;
     }
@@ -40,33 +46,60 @@ public class FeatureFlagOverrideService {
      * so versioned eval keys from prior configurations are abandoned without Redis scans.
      */
     @Transactional
-    public FeatureFlagOverrideResponse upsert(String flagName, String userId, UpsertOverrideRequest request) {
+    public FeatureFlagOverrideResponse upsert(
+            String flagName,
+            String userId,
+            UpsertOverrideRequest request,
+            String actor
+    ) {
+        FeatureFlag flag = getFlagOrThrow(flagName);
+
+        Optional<FeatureFlagOverride> existing =
+                overrideRepository.findByFlagIdAndUserId(flag.getId(), userId);
+        Map<String, Object> oldValue = existing
+                .map(AuditLogService::overrideValue)
+                .orElse(null);
+        AuditAction action = existing.isPresent() ? AuditAction.UPDATE : AuditAction.CREATE;
+
+        FeatureFlagOverride override = existing.orElseGet(
+                () -> new FeatureFlagOverride(flag.getId(), userId, request.enabled())
+        );
+        override.setEnabled(request.enabled());
+        FeatureFlagOverride saved = overrideRepository.save(override);
+
+        bumpFlagVersion(flag);
+        auditLogService.record(
+                flag.getId(),
+                actor,
+                action,
+                oldValue,
+                AuditLogService.overrideValue(saved)
+        );
+        cacheInvalidator.invalidateFlagConfig(flag.getName());
+
+        return new FeatureFlagOverrideResponse(flag.getName(), userId, saved.isEnabled());
+    }
+
+    @Transactional
+    public void delete(String flagName, String userId, String actor) {
         FeatureFlag flag = getFlagOrThrow(flagName);
 
         FeatureFlagOverride override = overrideRepository
                 .findByFlagIdAndUserId(flag.getId(), userId)
-                .orElseGet(() -> new FeatureFlagOverride(flag.getId(), userId, request.enabled()));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Override not found for flag '" + flagName + "' and user '" + userId + "'"
+                ));
 
-        override.setEnabled(request.enabled());
-        overrideRepository.save(override);
+        Map<String, Object> oldValue = AuditLogService.overrideValue(override);
+        overrideRepository.delete(override);
         bumpFlagVersion(flag);
-        cacheInvalidator.invalidateFlagConfig(flag.getName());
-
-        return new FeatureFlagOverrideResponse(flag.getName(), userId, override.isEnabled());
-    }
-
-    @Transactional
-    public void delete(String flagName, String userId) {
-        FeatureFlag flag = getFlagOrThrow(flagName);
-
-        if (!overrideRepository.existsByFlagIdAndUserId(flag.getId(), userId)) {
-            throw new ResourceNotFoundException(
-                    "Override not found for flag '" + flagName + "' and user '" + userId + "'"
-            );
-        }
-
-        overrideRepository.deleteByFlagIdAndUserId(flag.getId(), userId);
-        bumpFlagVersion(flag);
+        auditLogService.record(
+                flag.getId(),
+                actor,
+                AuditAction.DELETE,
+                oldValue,
+                null
+        );
         cacheInvalidator.invalidateFlagConfig(flag.getName());
     }
 

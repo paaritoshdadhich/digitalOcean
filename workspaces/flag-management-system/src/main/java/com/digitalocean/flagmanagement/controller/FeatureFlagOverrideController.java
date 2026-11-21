@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,14 +30,21 @@ public class FeatureFlagOverrideController {
     public FeatureFlagOverrideResponse upsert(
             @PathVariable String name,
             @PathVariable String userId,
-            @Valid @RequestBody UpsertOverrideRequest request
+            @Valid @RequestBody UpsertOverrideRequest request,
+            @RequestHeader(value = FeatureFlagController.ACTOR_HEADER, defaultValue = "anonymous")
+            String actorId
     ) {
-        return overrideService.upsert(name, userId, request);
+        return overrideService.upsert(name, userId, request, actorId);
     }
 
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String name, @PathVariable String userId) {
-        overrideService.delete(name, userId);
+    public void delete(
+            @PathVariable String name,
+            @PathVariable String userId,
+            @RequestHeader(value = FeatureFlagController.ACTOR_HEADER, defaultValue = "anonymous")
+            String actorId
+    ) {
+        overrideService.delete(name, userId, actorId);
     }
 }
